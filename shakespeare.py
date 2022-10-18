@@ -5,21 +5,6 @@ import numpy as np
 import re
 
 
-def get_positional_encoding(seq_length, dim):
-    pos, i = np.mgrid[:seq_length, :((dim+1)//2)]
-
-    angle_rads = pos/(10000**(2*i/dim))
-
-    result = np.empty([seq_length, dim], dtype=np.float32)
-    result[:, 0::2] = np.sin(angle_rads)
-    if (dim % 2) == 0:
-        result[:, 1::2] = np.cos(angle_rads)
-    else:
-        result[:, 1::2] = np.cos(np.delete(angle_rads, -1, axis=1))
-
-    return torch.from_numpy(result)
-
-
 class SelfAttention(nn.Module):
     def __init__(self, context_size, d_model, query_size, num_heads):
         super().__init__()
@@ -58,7 +43,7 @@ class Transformer(nn.Module):
     def __init__(self, d_model, context_size, vocab_size, num_layers, num_attention_heads):
         super().__init__()
 
-        self.pos_encoding = get_positional_encoding(context_size, d_model)
+        self.pos_encoding = self._get_positional_encoding(context_size, d_model)
 
         self.embedding = nn.Embedding(vocab_size, d_model)
 
@@ -75,6 +60,20 @@ class Transformer(nn.Module):
             self.layers[i]["norm2"] = nn.LayerNorm(d_model)
 
         self.final_linear = nn.Linear(d_model, vocab_size)
+
+    def _get_positional_encoding(self, seq_length, dim):
+        pos, i = np.mgrid[:seq_length, :((dim+1)//2)]
+
+        angle_rads = pos/(10000**(2*i/dim))
+
+        result = np.empty([seq_length, dim], dtype=np.float32)
+        result[:, 0::2] = np.sin(angle_rads)
+        if (dim % 2) == 0:
+            result[:, 1::2] = np.cos(angle_rads)
+        else:
+            result[:, 1::2] = np.cos(np.delete(angle_rads, -1, axis=1))
+
+        return torch.from_numpy(result)
 
     def forward(self, x):
         x = self.embedding(x)
