@@ -14,11 +14,13 @@ class SelfAttention(nn.Module):
         self.query_size = query_size
         self.num_heads = num_heads
 
-        self.mask = self._attention_mask(context_size)
-        self.heads = []
+        mask = self._attention_mask(context_size)
+        self.register_buffer("mask", mask)
+
+        self.heads = nn.ModuleList()
         # TODO: could probably make this a single matrix multiplication
         for i in range(num_heads):
-            self.heads.append({})
+            self.heads.append(nn.ModuleDict())
             self.heads[i]["WQ"] = nn.Linear(d_model, query_size)
             self.heads[i]["WK"] = nn.Linear(d_model, query_size)
             self.heads[i]["WV"] = nn.Linear(d_model, query_size)
@@ -34,21 +36,23 @@ class SelfAttention(nn.Module):
         return F.dropout(p_attn, p=0.1)
 
     def forward(self, x):
-        attention = torch.empty(x.size()[0], self.context_size, self.query_size*self.num_heads)
+        attention_by_head = []
         for i, head in enumerate(self.heads):
             Q, K, V = head["WQ"](x), head["WK"](x), head["WV"](x)
-            attention[:, :, i*self.query_size:(i+1)*self.query_size] = self._calculate_attention(Q, K, V)
+            attention_by_head.append(self._calculate_attention(Q, K, V))
+        attention = torch.cat(attention_by_head, dim=-1)
         return self.reducing_layer(attention)
 
 class Transformer(nn.Module):
     def __init__(self, d_model, context_size, vocab_size, num_layers, num_attention_heads):
         super().__init__()
 
-        self.pos_encoding = self._get_positional_encoding(context_size, d_model)
+        pos_encoding = self._get_positional_encoding(context_size, d_model)
+        self.register_buffer("pos_encoding", pos_encoding)
 
         self.embedding = nn.Embedding(vocab_size, d_model)
 
-        self.layers = [{} for i in range(num_layers)]
+        self.layers = nn.ModuleList([nn.ModuleDict() for i in range(num_layers)])
         for i in range(num_layers):
             self.layers[i]["attention"] = SelfAttention(context_size, d_model, d_model, num_attention_heads)
             self.layers[i]["norm1"] = nn.LayerNorm(d_model)
@@ -132,7 +136,7 @@ def test(data, model, loss_fn):
     print(f"Test Error: Avg loss: {test_loss:>8f} \n")
 
 # load our dataset: the complete works of shakespeare
-def load_shakespeare_data(context_size, batch_size):
+def load_shakespeare_data(context_size, batch_size, device="cpu"):
     # source: https://www.gutenberg.org/files/100/100-0.txt
     with open("shakespeare.txt") as shakespeare_file:
         raw_text = shakespeare_file.read()
@@ -156,7 +160,7 @@ def load_shakespeare_data(context_size, batch_size):
 
     data = []
     for batch_x, batch_y in zip(x_data, y_data):
-        data.append((torch.reshape(batch_x, (batch_size, context_size)), torch.reshape(batch_y, (batch_size, context_size))))
+        data.append((torch.reshape(batch_x, (batch_size, context_size)).to(device), torch.reshape(batch_y, (batch_size, context_size)).to(device)))
 
     # TODO: proper k-fold cross validation
     train_cutoff = int(0.8*len(data))
@@ -176,11 +180,12 @@ d_model = 50
 batch_size = 32
 num_layers = 2
 num_attention_heads = 3
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-train_data, test_data, vocab_size = load_shakespeare_data(context_size, batch_size)
+train_data, test_data, token_map = load_shakespeare_data(context_size, batch_size, device)
 
-model = Transformer(d_model, context_size, vocab_size, num_layers, num_attention_heads)
-#model = SimpleRNN(d_model, vocab_size)
+model = Transformer(d_model, context_size, vocab_size, num_layers, num_attention_heads).to(device)
+#model = SimpleRNN(d_model, vocab_size).to(device)
 
 # TODO: learning rate schedule
 loss_fn = nn.CrossEntropyLoss()
