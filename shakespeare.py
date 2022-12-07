@@ -167,9 +167,28 @@ def load_shakespeare_data(context_size, batch_size, device="cpu"):
     train_cutoff = int(0.8*len(data))
     train_data = data[:train_cutoff]
     test_data = data[train_cutoff:]
-    vocab_size = len(token_map)
 
-    return train_data, test_data, vocab_size
+    return train_data, test_data, token_map
+
+def greedy_inference(sentence, model, token_map, context_size, device):
+    input_tokens = sentence.split()
+    encoded_words = torch.zeros(context_size, dtype=torch.long, device=device)
+
+    for i, word in enumerate(input_tokens):
+        encoded_words[i] = token_map[word]
+
+    reverse_token_map = {v: k for k, v in token_map.items()}
+
+    model.eval()
+    with torch.no_grad():
+      for idx in range(len(input_tokens), context_size):
+        pred = model(encoded_words)
+        encoded_words[idx] = torch.argmax(pred[idx-1]).item()
+
+    decoded_words = [reverse_token_map[token.item()] for token in encoded_words]
+    decoded_sentence = ' '.join(decoded_words)
+
+    return decoded_sentence
 
 # reproducible results
 torch.manual_seed(1)
@@ -184,6 +203,7 @@ num_attention_heads = 3
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 train_data, test_data, token_map = load_shakespeare_data(context_size, batch_size, device)
+vocab_size = len(token_map)
 
 model = Transformer(d_model, context_size, vocab_size, num_layers, num_attention_heads).to(device)
 #model = SimpleRNN(d_model, vocab_size).to(device)
@@ -199,6 +219,7 @@ for t in range(epochs):
     test(test_data, model, loss_fn)
 print("Done!")
 
+print(greedy_inference("Thy heart", model, token_map, context_size, device))
+
 # TODO: save and load weights
-# TODO: add interface for model inference
 
