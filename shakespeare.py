@@ -28,7 +28,7 @@ class SelfAttention(nn.Module):
 
     def _attention_mask(self, size):
         mask = np.tril(np.ones([size, size]), 0) == 0
-        return torch.from_numpy(mask)
+        return torch.from_numpy(mask).requires_grad_(False)
 
     def _calculate_attention(self, Q, K, V):
         scores = (Q@torch.transpose(K, -2, -1)) / np.sqrt(self.d_model)
@@ -78,7 +78,7 @@ class Transformer(nn.Module):
         else:
             result[:, 1::2] = np.cos(np.delete(angle_rads, -1, axis=1))
 
-        return torch.from_numpy(result)
+        return torch.from_numpy(result).requires_grad_(False)
 
     def forward(self, x):
         x = self.embedding(x)
@@ -117,7 +117,7 @@ def train(data, model, loss_fn, optimizer):
         loss = loss_fn(torch.flatten(pred, 0, 1), torch.flatten(y))
 
         # Backpropagation
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
         loss.backward()
         optimizer.step()
 
