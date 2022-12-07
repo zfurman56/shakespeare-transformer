@@ -30,7 +30,8 @@ class SelfAttention(nn.Module):
 
     def _calculate_attention(self, Q, K, V):
         scores = (Q@torch.transpose(K, -2, -1)) / np.sqrt(self.d_model)
-        return F.softmax(scores.masked_fill(self.mask, -1e9), dim=-1) @ V
+        p_attn = F.softmax(scores.masked_fill(self.mask, -1e9), dim=-1) @ V
+        return F.dropout(p_attn, p=0.1)
 
     def forward(self, x):
         attention = torch.empty(x.size()[0], self.context_size, self.query_size*self.num_heads)
@@ -80,7 +81,7 @@ class Transformer(nn.Module):
 
         # this can't be "x += self.pos_encoding" because that's in-place, and pytorch has
         # problems with that
-        x = x + self.pos_encoding
+        x = F.dropout(x + self.pos_encoding, p=0.1)
 
         for layer in self.layers:
             attn_out = F.dropout(layer["attention"](x), p=0.1)
