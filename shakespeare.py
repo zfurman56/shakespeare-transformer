@@ -110,6 +110,7 @@ class SimpleRNN(nn.Module):
 
 def train(data, model, loss_fn, optimizer):
     size = len(data)*len(data[0][0])
+    model.train()
     for batch, (X, y) in enumerate(data):
         # Compute prediction error
         pred = model(X)
